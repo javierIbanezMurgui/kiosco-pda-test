@@ -108,11 +108,10 @@
         <button onclick="AndroidApp.abrirApp('es.tlsi.mobile')">📦 Whales nuevo</button>
 
 
-        <button
-
-
-        <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;" onchange="handleImageCapture(this)">
-        <button onclick="document.getElementById('cameraInput').click()" class="btn-secondary">📷 Cámara/Galeria</button>
+<label class="btn-secondary">
+    📷 Cámara/Galería
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" onchange="handleImageCapture(this)" hidden>
+</label>
 
         <button onclick="window.location.href='https://azalogisticsextranet.activalink.com/views/login/'">🚚 ActivaLink</button>
 
