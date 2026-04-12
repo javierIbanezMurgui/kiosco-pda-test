@@ -99,15 +99,20 @@
 
         <button onclick="window.location.href='http://192.168.2.20/Planificador/login.php?entorno=cdmuelles'">🚚 CD Muelles</button>
 
-        <button onclick="abrirApp('es.tlsi.whales.android')">📦 Whales</button>
-        <button onclick="abrirApp('com.datalogic.scan2deploy')">📦 Scan2deploy</button>
-        <button onclick="abrirApp('com.azalogistics.aza_scanner')">📦 Scan</button>
-        <button onclick="abrirApp('es.tlsi.mobile')">📦 Whales nuevo</button>
+        <button onclick="AndroidApp.abrirApp('es.tlsi.whales.android')">📦 Whales</button>
+        <button onclick="AndroidApp.abrirApp('com.datalogic.scan2deploy')">📦 Scan2deploy</button>
 
-        <label class="btn-secondary">
-            📷 Cámara/Galería
-            <input type="file" id="cameraInput" accept="image/*" capture="environment" onchange="handleImageCapture(this)" hidden>
-        </label>
+
+<button onclick="AndroidApp.abrirApp('com.azalogistics.aza_scanner')">📦 Scan</button>
+
+        <button onclick="AndroidApp.abrirApp('es.tlsi.mobile')">📦 Whales nuevo</button>
+
+
+        <button
+
+
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;" onchange="handleImageCapture(this)">
+        <button onclick="document.getElementById('cameraInput').click()" class="btn-secondary">📷 Cámara/Galeria</button>
 
         <button onclick="window.location.href='https://azalogisticsextranet.activalink.com/views/login/'">🚚 ActivaLink</button>
 
@@ -116,7 +121,7 @@
 </div>
 
 <script>
-const API = "http://192.168.2.33:8000";
+const API = "https://script.google.com/macros/s/AKfycbyX035p6lj9f4Szzn5Y4-5Y9OF9pVOg9d2t9kNk2GOfxShDsTP2iBcGB8gDNULFnfEG/exec";
 
 let USUARIO_ACTUAL = null;
 let PDA_NUMERO = null;
@@ -140,32 +145,35 @@ async function getCoords(){
     });
 }
 
-/* INIT */
+function handleImageCapture(input){
+    const file = input.files[0];
+    if (file){
+        const reader = new FileReader();
+        reader.onload = () => alert("Imagen lista: " + file.name);
+        reader.readAsDataURL(file);
+        input.value = "";
+    }
+}
+
 async function inicializar(){
     try {
-        let device = getDeviceId();
-
-        let resp = await fetch(API + "/pdas/");
+        let resp = await fetch(API + "?action=init&device=" + encodeURIComponent(getDeviceId()));
         let data = await resp.json();
 
-        let pda = data.find(d => d.device == device);
-
-        if (pda){
-            PDA_NUMERO = pda.numeroPda || pda.id;
+        if (data.status === "ok") {
+            PDA_NUMERO = data.numeroPda;
             document.getElementById("pdaLabel").innerText = "PDA " + PDA_NUMERO;
             document.getElementById("loginBtn").disabled = false;
         } else {
             document.getElementById("pdaLabel").innerText = "No registrado";
-            showError("ID: " + device + "\nNo registrado");
+            showError("ID: " + getDeviceId() + "\nContacta con el jefe de almacén");
         }
-
     } catch(e){
         document.getElementById("pdaLabel").innerText = "Error conexión";
-        showError("Sin conexión con API");
+        showError("Sin internet");
     }
 }
 
-/* LOGIN */
 async function login(){
     let u = document.getElementById("usuario").value.trim();
     let p = document.getElementById("pin").value;
@@ -176,57 +184,54 @@ async function login(){
     }
 
     showError("");
+
     document.getElementById("loading").style.display = "block";
     document.getElementById("loginBtn").disabled = true;
 
     try {
         let coords = await getCoords();
-
-        let resp = await fetch(API + "/usuarios/?usuario=" + u);
-        let users = await resp.json();
-
-        if (!users.length){
-            throw new Error("Usuario no existe");
-        }
-
-        let user = users[0];
-
-        if (String(user.pin) !== String(p)){
-            throw new Error("PIN incorrecto");
-        }
-
-        if (String(user.numPDA) !== String(PDA_NUMERO)){
-            throw new Error("Esta no es tu PDA asignada");
-        }
-
-        await fetch(API + "/logs/login", {
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({
-                usuario: u,
-                pda: PDA_NUMERO,
-                device: getDeviceId(),
-                lat: coords.lat,
-                lng: coords.lng
-            })
+        let body = new URLSearchParams({
+            action:"login",
+            user:u,
+            pin:p,
+            pda:PDA_NUMERO,
+            device:getDeviceId(),
+            lat:coords.lat,
+            lng:coords.lng
         });
 
-        USUARIO_ACTUAL = u;
+        let resp = await fetch(API, {
+            method:"POST",
+            headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},
+            body:body.toString()
+        });
 
-        document.getElementById("login").style.display = "none";
-        document.getElementById("menu").style.display = "block";
-        document.getElementById("pin").value = "";
+        let data = await resp.json();
 
+        if (data.status === "ok"){
+            USUARIO_ACTUAL = u;
+
+            document.getElementById("login").style.display = "none";
+            document.getElementById("menu").style.display = "block";
+
+            document.getElementById("pin").value = "";
+        } else {
+            showError(data.msg || "Error desconocido");
+            document.getElementById("pin").value = "";
+        }
     } catch(e){
-        showError(e.message || "Error de login");
-        document.getElementById("pin").value = "";
+        showError("Error de conexión");
     } finally {
         document.getElementById("loginBtn").disabled = false;
         document.getElementById("loading").style.display = "none";
     }
 }
 
-/* LOGOUT */
+function showError(msg){
+    document.getElementById("error").innerText = msg;
+    document.getElementById("error").style.display = msg ? "block" : "none";
+}
+
 async function logout(){
     if (!USUARIO_ACTUAL || !PDA_NUMERO){
         location.reload();
@@ -236,66 +241,11 @@ async function logout(){
     let coords = await getCoords();
 
     try {
-        await fetch(API + "/logs/logout", {
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({
-                usuario: USUARIO_ACTUAL,
-                pda: PDA_NUMERO,
-                device: getDeviceId(),
-                lat: coords.lat,
-                lng: coords.lng
-            })
-        });
+        await fetch(API + `?action=logout&user=${encodeURIComponent(USUARIO_ACTUAL)}&pda=${encodeURIComponent(PDA_NUMERO)}&device=${encodeURIComponent(getDeviceId())}&lat=${coords.lat}&lng=${coords.lng}`);
     } catch(e){}
 
     USUARIO_ACTUAL = null;
     location.reload();
-}
-
-/* HEARTBEAT */
-setInterval(() => {
-    if (USUARIO_ACTUAL && PDA_NUMERO){
-        fetch(API + "/logs/heartbeat", {
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({
-                usuario: USUARIO_ACTUAL,
-                pda: PDA_NUMERO,
-                device: getDeviceId()
-            })
-        });
-    }
-}, 60000);
-
-/* IDLE TIMEOUT */
-let ultimoMovimiento = Date.now();
-["touchstart","click","keydown","mousemove"].forEach(ev => 
-    document.addEventListener(ev, () => ultimoMovimiento = Date.now())
-);
-
-setInterval(async () => {
-    if (USUARIO_ACTUAL && PDA_NUMERO){
-        if (Date.now() - ultimoMovimiento > 7 * 60 * 1000){
-            await logout();
-        }
-    }
-}, 60000);
-
-/* UI */
-function showError(msg){
-    document.getElementById("error").innerText = msg;
-    document.getElementById("error").style.display = msg ? "block" : "none";
-}
-
-function handleImageCapture(input){
-    const file = input.files[0];
-    if (file){
-        const reader = new FileReader();
-        reader.onload = () => alert("Imagen lista: " + file.name);
-        reader.readAsDataURL(file);
-        input.value = "";
-    }
 }
 
 function abrirApp(pkg){
@@ -308,22 +258,46 @@ function abrirApp(pkg){
 
 window.addEventListener("beforeunload", () => {
     if (USUARIO_ACTUAL && PDA_NUMERO){
-        navigator.sendBeacon(API + "/logs/logout", JSON.stringify({
-            usuario: USUARIO_ACTUAL,
-            pda: PDA_NUMERO,
-            device: getDeviceId(),
-            lat: 0,
-            lng: 0
-        }));
+        navigator.sendBeacon(API + `?action=logout&user=${encodeURIComponent(USUARIO_ACTUAL)}&pda=${encodeURIComponent(PDA_NUMERO)}&device=${encodeURIComponent(getDeviceId())}&lat=0&lng=0`);
     }
 });
 
 window.onload = inicializar;
+
+/* ------------------------------
+   HEARTBEAT CADA 30 SEGUNDOS
+--------------------------------*/
+setInterval(() => {
+    if (USUARIO_ACTUAL && PDA_NUMERO){
+        fetch(
+          API 
+          + `?action=heartbeat`
+          + `&user=${encodeURIComponent(USUARIO_ACTUAL)}`
+          + `&pda=${encodeURIComponent(PDA_NUMERO)}`
+          + `&device=${encodeURIComponent(getDeviceId())}`
+          + `&ts=${Date.now()}`
+        );
+    }
+}, 60000);
+
+// IDLE TIMEOUT (7 minutos) con teclado, touch, click y mouse
+let ultimoMovimiento = Date.now();
+["touchstart","click","keydown","mousemove"].forEach(ev => 
+    document.addEventListener(ev, () => ultimoMovimiento = Date.now())
+);
+
+setInterval(async () => {
+    if (USUARIO_ACTUAL && PDA_NUMERO){
+        if (Date.now() - ultimoMovimiento > 7 * 60 * 1000){
+            await logout();
+        }
+    }
+}, 60000);
 </script>
 
 <div id="adminEscape"
      style="position:fixed; bottom:0; right:0; width:60px; height:60px; opacity:0;"
-     onclick="AndroidApp?.solicitarPinAdmin?.()">
+     onclick="AndroidApp.solicitarPinAdmin()">
 </div>
 
 </body>
